@@ -1,4 +1,43 @@
+use std::io::{self, Read, Write};
 use super::{RconPacket, RconPacketType};
+
+pub struct DebugStream<T: Read + Write> {
+    base: T,
+    recv: Vec<Box<[u8]>>,
+    sent: Vec<Box<[u8]>>
+}
+
+impl<T: Read + Write> DebugStream<T> {
+    pub fn new(stream: T) -> Self {
+        Self { base: stream, recv: Vec::new(), sent: Vec::new() }
+    }
+}
+
+impl<T: Read + Write> Write for DebugStream<T> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {   
+        let size = self.base.write(buf)?;     
+        self.sent.push(Box::from(buf));
+
+        println!("OUTBOUND----------");
+        println!("{:02X?}", buf);
+    
+        return Ok(size)
+    }
+
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+}
+
+impl<T: Read + Write> Read for DebugStream<T> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let size = self.base.read(buf)?;
+        self.recv.push(Box::from(&*buf));
+        
+        println!("INBOUND----------");
+        println!("{:02X?}", &buf[..size]);
+
+        return Ok(size);
+    }
+}
 
 #[test]
 fn smallest_packet() {
