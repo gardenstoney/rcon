@@ -3,13 +3,10 @@ use std::{io::{Read, Write}, net::{SocketAddr, TcpStream}};
 use crate::{RconError, RconPacket, RconPacketType};
 
 
-fn request<T: Read + Write + Unpin>(stream: &mut T, payload: RconPacket) -> Result<RconPacket, RconError> {
+fn request<T: Read + Write + Unpin>(mut stream: &mut T, payload: RconPacket) -> Result<RconPacket, RconError> {
     stream.write_all(&payload.as_bytes())?;
 
-    let mut buf = [0; 4100];
-    let bytes_received = stream.read(&mut buf)?;
-
-    let resp = RconPacket::from_bytes(&buf[..bytes_received])?;
+    let resp = RconPacket::from_stream(&mut stream)?;
     
     Ok(resp)
 }
