@@ -6,7 +6,7 @@ pub mod client;
 #[derive(Debug)]
 pub enum RconError {
     IoError(io::Error),
-    InvalidPacket{buffer: Box<[u8]>},
+    InvalidPacket{buffer: Box<[u8]>, message: &'static str},
     InvalidResponse{resp: RconPacket},
     InvalidResponseType{resp: RconPacket, expected: i32},
     InvalidRequest{req: RconPacket},
@@ -23,7 +23,7 @@ impl fmt::Display for RconError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RconError::IoError(e) => write!(f, "IO error: {}", e),
-            RconError::InvalidPacket { buffer } => write!(f, "Invalid packet:\n{:02X?}", buffer),
+            RconError::InvalidPacket { buffer, message } => write!(f, "Invalid packet: {}, {:02X?}", message, buffer),
             RconError::InvalidResponse { resp } => write!(f, "Invalid response:\n{:#?}", resp),
             RconError::InvalidResponseType { resp, expected } => write!(f, "Invalid response type: expected {}, got {}", expected, resp.p_type),
             RconError::InvalidRequest { req} => write!(f, "Invalid request:\n{:#?}", req),
@@ -82,7 +82,7 @@ impl RconPacket {
         let len = buf.len();
 
         if len != (packet_size + 4).try_into().unwrap() {
-            return Err(RconError::InvalidPacket{ buffer: buf.into() })  // length longer than expected
+            return Err(RconError::InvalidPacket{ buffer: buf.into(), message: "length different from expected" });
         }
 
         let p_id = i32::from_le_bytes(buf[4..8].try_into().unwrap());
