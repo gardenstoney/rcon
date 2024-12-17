@@ -80,15 +80,21 @@ fn parse_invalid_size() {
     RconPacket::from_bytes(&buffer).unwrap();
 }
 
-struct StaticPayloadStream {
+pub struct StaticPayloadStream {
     bytes: Vec<u8>,
     marker: usize
 }
 
 impl StaticPayloadStream {
-    fn new(bytes: Vec<u8>) -> Self {
+    pub fn new(bytes: Vec<u8>) -> Self {
         Self { bytes, marker: 0 }
     }
+}
+
+impl Write for StaticPayloadStream {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> { Ok(buf.len()) }
+
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
 }
 
 impl Read for StaticPayloadStream {

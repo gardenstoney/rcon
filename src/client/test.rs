@@ -1,23 +1,25 @@
 use std::io::{self, Read, Write};
-use crate::{test::DebugStream, RconError, RconPacket, RconPacketType};
+use crate::{test::{DebugStream, StaticPayloadStream}, RconError, RconPacket, RconPacketType};
 
 use super::RconClient;
 
 #[test]
 fn client_connect_and_auth() {
     struct MockStream {
-        id: i32
+        base: Option<StaticPayloadStream>
     }
 
     impl MockStream {
-        fn new() -> Self { Self { id: 0 } }
+        fn new() -> Self { Self { base: None } }
     }
 
     impl Write for MockStream {
         fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.id = RconPacket::from_bytes(buf).expect("Couldn't parse packet").p_id;
+            let id = RconPacket::from_bytes(buf).expect("Couldn't parse packet").p_id;
+            let packet = RconPacket::new(id, RconPacketType::AuthResponse.into(), "");
+            self.base = Some(StaticPayloadStream::new(packet.as_bytes()));
 
-            Ok(buf.len()) 
+            Ok(buf.len())
         }
 
         fn flush(&mut self) -> io::Result<()> { Ok(()) }
@@ -25,8 +27,7 @@ fn client_connect_and_auth() {
 
     impl Read for MockStream {
         fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
-            let packet = RconPacket::new(self.id, RconPacketType::AuthResponse.into(), "");
-            buf.write(&packet.as_bytes())
+            self.base.as_mut().unwrap().read(&mut buf)
         }
     }
 
@@ -40,26 +41,8 @@ fn client_connect_and_auth() {
 
 #[test]
 fn client_auth_fail() {
-    struct MockStream;
-
-    impl MockStream {
-        fn new() -> Self { Self {} }
-    }
-
-    impl Write for MockStream {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> { Ok(buf.len()) }
-
-        fn flush(&mut self) -> io::Result<()> { Ok(()) }
-    }
-
-    impl Read for MockStream {
-        fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
-            let packet = RconPacket::new(-1, RconPacketType::AuthResponse.into(), "");
-            buf.write(&packet.as_bytes())
-        }
-    }
-
-    let stream = DebugStream::new(MockStream::new());
+    let packet = RconPacket::new(-1, RconPacketType::AuthResponse.into(), "");
+    let stream = DebugStream::new(StaticPayloadStream::new(packet.as_bytes()));
 
     let mut client = RconClient { stream };
     assert!(matches!(client.auth("asdf"), Err(RconError::AuthFailed)))
