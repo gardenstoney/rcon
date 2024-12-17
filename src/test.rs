@@ -1,4 +1,6 @@
 use std::io::{self, Read, Write};
+use crate::RconError;
+
 use super::{RconPacket, RconPacketType};
 
 pub struct DebugStream<T: Read + Write> {
@@ -76,4 +78,81 @@ fn parse_packet_resp() {
 fn parse_invalid_size() {
     let buffer: [u8; 29] = [0x17,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x65,0x63,0x68,0x6f,0x20,0x48,0x4c,0x53,0x57,0x3a,0x20,0x54,0x65,0x73,0x74,0x00,0x00];
     RconPacket::from_bytes(&buffer).unwrap();
+}
+
+struct StaticPayloadStream {
+    bytes: Vec<u8>,
+    marker: usize
+}
+
+impl StaticPayloadStream {
+    fn new(bytes: Vec<u8>) -> Self {
+        Self { bytes, marker: 0 }
+    }
+}
+
+impl Read for StaticPayloadStream {
+    fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
+        let size = buf.write(&self.bytes[self.marker..])?;
+
+        self.marker += size;
+
+        Ok(size)
+    }
+}
+
+#[test]
+fn from_stream() {
+    let stream = StaticPayloadStream::new(vec![0x0a,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x00,0x00]);
+    let packet = RconPacket::from_stream(stream).unwrap();
+
+    assert_eq!(packet.p_id, 1);
+    assert_eq!(packet.p_type, 2);
+    assert_eq!(packet.body, "");
+}
+
+#[test]
+fn from_stream_invalid_end() {
+    let stream = StaticPayloadStream::new(vec![0x19,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x65,0x63,0x68,0x6f,0x20,0x48,0x4c,0x53,0x57,0x3a,0x20,0x54,0x65,0x73,0x74,0x74,0x00]);
+    let err = RconPacket::from_stream(stream).unwrap_err();
+
+    if let RconError::InvalidPacket { buffer: _, message } = err {
+        if message == "packet didn't end with 0x0000" {
+            return;
+        }            
+    }    
+    panic!("{}", err);
+}
+
+#[test]
+fn from_stream_packet_getting_cut() {
+    struct MockStream {
+        base: StaticPayloadStream,
+        read_counter: u8,
+    }
+    
+    impl MockStream {
+        fn new(bytes: Vec<u8>) -> Self {
+            Self { base: StaticPayloadStream{ bytes, marker: 0 }, read_counter: 0 }
+        }
+    }
+    
+    impl Read for MockStream {
+        fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
+            let size = match self.read_counter {
+                0 => self.base.read(&mut buf)?,
+                1 => self.base.read(&mut buf[..6])?,
+                2 => self.base.read(&mut buf)?,
+                _ => panic!("")
+            };
+            
+            self.read_counter += 1;
+
+            println!("read {} bytes / {} bytes", size, buf.len());
+            Ok(size)
+        }
+
+    }
+    let stream = MockStream::new(vec![0x19,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x65,0x63,0x68,0x6f,0x20,0x48,0x4c,0x53,0x57,0x3a,0x20,0x54,0x65,0x73,0x74,0x00,0x00]);
+    RconPacket::from_stream(stream).unwrap();
 }

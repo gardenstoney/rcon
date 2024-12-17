@@ -1,5 +1,5 @@
 use core::fmt;
-use std::io;
+use std::io::{self, Read};
 
 pub mod client;
 
@@ -75,6 +75,25 @@ impl RconPacket {
         }
 
         Self { p_id, p_type, body: body.into() }
+    }
+
+    pub fn from_stream<T: Read>(mut stream: T) -> Result<RconPacket, RconError> {
+        let mut size_buf = [0; 4];
+        stream.read_exact(&mut size_buf)?;
+        let packet_size = i32::from_le_bytes(size_buf);
+
+        let mut content_buf = vec![0; packet_size.try_into().unwrap()];
+        stream.read_exact(&mut content_buf)?;
+        
+        if content_buf.pop() != Some(0) || content_buf.pop() != Some(0) {  // ugly?
+            return Err(RconError::InvalidPacket { buffer: content_buf.into(), message: "packet didn't end with 0x0000" })
+        }
+
+        let p_id = i32::from_le_bytes(content_buf[..4].try_into().unwrap());
+        let p_type = i32::from_le_bytes(content_buf[4..8].try_into().unwrap());
+        let body = String::from_utf8_lossy(&content_buf[8..]).to_string();
+
+        Ok(Self::new(p_id, p_type, body))
     }
 
     pub fn from_bytes(buf: &[u8]) -> Result<Self, RconError> {
