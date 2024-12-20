@@ -80,26 +80,26 @@ fn parse_invalid_size() {
     RconPacket::from_bytes(&buffer).unwrap();
 }
 
-pub struct StaticPayloadStream {
-    bytes: Vec<u8>,
+pub struct BufferedStream {
+    pub payload: Vec<u8>,
     marker: usize
 }
 
-impl StaticPayloadStream {
-    pub fn new(bytes: Vec<u8>) -> Self {
-        Self { bytes, marker: 0 }
+impl BufferedStream {
+    pub fn new(payload: Vec<u8>) -> Self {
+        Self { payload, marker: 0 }
     }
 }
 
-impl Write for StaticPayloadStream {
+impl Write for BufferedStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> { Ok(buf.len()) }
 
     fn flush(&mut self) -> io::Result<()> { Ok(()) }
 }
 
-impl Read for StaticPayloadStream {
+impl Read for BufferedStream {
     fn read(&mut self, mut buf: &mut [u8]) -> io::Result<usize> {
-        let size = buf.write(&self.bytes[self.marker..])?;
+        let size = buf.write(&self.payload[self.marker..])?;
 
         self.marker += size;
 
@@ -109,7 +109,7 @@ impl Read for StaticPayloadStream {
 
 #[test]
 fn from_stream() {
-    let stream = StaticPayloadStream::new(vec![0x0a,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x00,0x00]);
+    let stream = BufferedStream::new(vec![0x0a,0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x02,0x00,0x00,0x00,0x00,0x00]);
     let packet = RconPacket::from_stream(stream).unwrap();
 
     assert_eq!(packet.p_id, 1);
@@ -119,7 +119,7 @@ fn from_stream() {
 
 #[test]
 fn from_stream_invalid_end() {
-    let stream = StaticPayloadStream::new(vec![0x19,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x65,0x63,0x68,0x6f,0x20,0x48,0x4c,0x53,0x57,0x3a,0x20,0x54,0x65,0x73,0x74,0x74,0x00]);
+    let stream = BufferedStream::new(vec![0x19,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x65,0x63,0x68,0x6f,0x20,0x48,0x4c,0x53,0x57,0x3a,0x20,0x54,0x65,0x73,0x74,0x74,0x00]);
     let err = RconPacket::from_stream(stream).unwrap_err();
 
     if let RconError::InvalidPacket { buffer: _, message } = err {
@@ -133,13 +133,13 @@ fn from_stream_invalid_end() {
 #[test]
 fn from_stream_packet_getting_cut() {
     struct MockStream {
-        base: StaticPayloadStream,
+        base: BufferedStream,
         read_counter: u8,
     }
     
     impl MockStream {
-        fn new(bytes: Vec<u8>) -> Self {
-            Self { base: StaticPayloadStream{ bytes, marker: 0 }, read_counter: 0 }
+        fn new(payload: Vec<u8>) -> Self {
+            Self { base: BufferedStream{ payload, marker: 0 }, read_counter: 0 }
         }
     }
     
