@@ -10,6 +10,28 @@ fn request<T: Read + Write + Unpin>(mut stream: &mut T, payload: RconPacket) -> 
     
     Ok(resp)
 }
+
+fn request_multi_packet<T: Read + Write + Unpin>(mut stream: &mut T, payload: RconPacket) -> Result<Vec<RconPacket>, RconError> {
+    stream.write_all(&payload.as_bytes())?;
+
+    let end_packet = RconPacket::new(2, RconPacketType::ResponseValue.into(), "");
+    stream.write_all(&end_packet.as_bytes())?;
+
+    let mut responses: Vec<RconPacket> = Vec::new();
+
+    loop {
+        let resp = RconPacket::from_stream(&mut stream)?;
+        
+        if resp.p_id == 2 && resp.body.len() == 0 {
+            break;
+        } else {
+            responses.push(resp);
+        }
+    }
+
+    Ok(responses)
+}
+
 pub struct RconClient<T: Read + Write + Unpin> {
     stream: T,
 }
@@ -49,19 +71,25 @@ impl<T: Read + Write + Unpin> RconClient<T> {
 
     pub fn exec<U: Into<String>>(&mut self, message: U) -> Result<String, RconError> {
         let payload = RconPacket::new(1, RconPacketType::ExecCommand.into(), message.into());
-        let resp = request(&mut self.stream, payload)?;
+        let responses = request_multi_packet(&mut self.stream, payload)?;
 
-        if resp.p_type != RconPacketType::ResponseValue.into() {
-            return Err(
-                RconError::InvalidResponseType { expected: RconPacketType::ResponseValue.into(), resp }
-            );
-        }
-        
-        if resp.p_id != 1 {
-            return Err(RconError::InvalidResponse { resp });  // response with different id
+        let mut body = String::new();
+
+        for resp in responses { 
+            if resp.p_type != RconPacketType::ResponseValue.into() {
+                return Err(
+                    RconError::InvalidResponseType { expected: RconPacketType::ResponseValue.into(), resp }
+                );
+            }
+            
+            if resp.p_id != 1 {
+                return Err(RconError::InvalidResponse { resp });  // response with different id
+            }
+
+            body += &resp.body;
         }
 
-        return Ok(resp.body);
+        return Ok(body);
     }
 }
 

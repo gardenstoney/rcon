@@ -8,11 +8,11 @@
 - done?: Figure out all the ownership stuff in slices and vecs for the parameters when writing functions
 - test client with mock stream
 
+    - differenciate packets when reading from the stream by only reading the packet size amount
 
 # Stability
 - use unique id for each request
 - deal with server responding with two packets(empty resp, and then authresp) when responding to auth.
-    - differenciate packets when reading from the stream by only reading the packet size amount
     - Make the client wait for the resp with the right id, storing resps irrelevant to the req in the struct and throwing out old irrelevant resps.
     This thing is weird. Minecraft is not following the doc and only sending the authresp
 
